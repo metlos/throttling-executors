@@ -1,0 +1,3 @@
+Throttling Executors
+
+This is an experiment to see what can be done about CPU throttled execution service in Java.
