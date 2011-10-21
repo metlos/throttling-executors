@@ -1,7 +1,7 @@
 /**
  * 
  */
-package metlos.executors.throttling;
+package metlos.executors.ordering;
 
 /**
  * @author Lukas Krejci

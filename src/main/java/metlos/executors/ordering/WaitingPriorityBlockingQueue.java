@@ -1,7 +1,7 @@
 /**
  * 
  */
-package metlos.executors.throttling;
+package metlos.executors.ordering;
 
 import java.util.Collection;
 import java.util.Comparator;
