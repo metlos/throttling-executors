@@ -12,14 +12,12 @@ import java.util.Comparator;
 public class OrderedTaskComparator<T extends OrderedTask> implements
     Comparator<T> {
 
-    public int compare(T o1, T o2) {
-        if (o1.getPredecessors().contains(o2)) {
-            return 1;
-        } else if (o2.getPredecessors().contains(o1)) {
-            return -1;
-        } else {
-            return 0;
-        }
+    public static <E extends OrderedTask> int compareStatically(E o1, E o2) {
+        return o1.getDepth() - o2.getDepth();
     }
-
+    
+    @Override
+    public int compare(T o1, T o2) {
+        return compareStatically(o1, o2);
+    }
 }

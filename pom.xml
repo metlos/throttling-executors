@@ -34,11 +34,4 @@
         </plugin>
     </plugins>
   </build>
-  
-  <repositories>
-    <repository>
-        <id>JBoss repo</id>
-        <url>http://repository.jboss.org</url>
-    </repository>
-  </repositories>
 </project>
