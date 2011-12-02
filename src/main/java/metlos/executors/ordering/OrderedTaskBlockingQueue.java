@@ -9,6 +9,7 @@ import java.util.Collection;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.PriorityQueue;
+import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.DelayQueue;
 import java.util.concurrent.TimeUnit;
@@ -16,20 +17,19 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
 /**
- * Waiting priority queue is a priority queue that accepts {@link OrderedTask}s.
  * The queue behaves similarly to how the {@link DelayQueue} does - the elements from the queue are not possible
  * to poll until all the predecessors of the task are finished ({@link OrderedTask#isFinished()} return true).
  * 
  * @author Lukas Krejci
  */
-public class WaitingPriorityBlockingQueue<E extends OrderedTask> extends AbstractQueue<E> implements BlockingQueue<E> {
+public class OrderedTaskBlockingQueue<E extends OrderedTask> extends AbstractQueue<E> implements BlockingQueue<E> {
 
     private static final long serialVersionUID = 1L;
 
     private transient final ReentrantLock lock = new ReentrantLock();
     private transient final Condition available = lock.newCondition();
 
-    private final PriorityQueue<E> q;
+    private final Queue<E> q;
 
     private static class ElementAndIterator<T> {
         T element;
@@ -41,21 +41,25 @@ public class WaitingPriorityBlockingQueue<E extends OrderedTask> extends Abstrac
         }
     }
 
-    public WaitingPriorityBlockingQueue() {
-        q = new PriorityQueue<E>();
+    public OrderedTaskBlockingQueue() {
+        this(new PriorityQueue<E>());
     }
 
-    public WaitingPriorityBlockingQueue(Collection<? extends E> c) {
+    public OrderedTaskBlockingQueue(Queue<E> queueToWrap) {
+        q = queueToWrap;
+    }
+    
+    public OrderedTaskBlockingQueue(Collection<? extends E> c) {
         this();
         addAll(c);
     }
 
-    public WaitingPriorityBlockingQueue(int initialCapacity) {
-        q = new PriorityQueue<E>(initialCapacity);
+    public OrderedTaskBlockingQueue(int initialCapacity) {
+        this(new PriorityQueue<E>(initialCapacity));
     }
 
-    public WaitingPriorityBlockingQueue(int initialCapacity, Comparator<? super E> comparator) {
-        q = new PriorityQueue<E>(initialCapacity, comparator);
+    public OrderedTaskBlockingQueue(int initialCapacity, Comparator<? super E> comparator) {
+        this(new PriorityQueue<E>(initialCapacity, comparator));
     }
 
     @Override

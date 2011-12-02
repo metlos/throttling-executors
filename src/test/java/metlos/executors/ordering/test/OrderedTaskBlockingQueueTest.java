@@ -23,7 +23,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 
 import metlos.executors.ordering.AbstractOrderedTask;
 import metlos.executors.ordering.OrderedRunnableTask;
-import metlos.executors.ordering.WaitingPriorityBlockingQueue;
+import metlos.executors.ordering.OrderedTaskBlockingQueue;
 import metlos.executors.support.BlockingQueueWrapper;
 
 import org.testng.annotations.Test;
@@ -34,7 +34,7 @@ import org.testng.annotations.Test;
  * @author Lukas Krejci
  */
 @Test
-public class WaitingPriorityBlockingQueueTest {
+public class OrderedTaskBlockingQueueTest {
 
     private static class Task extends AbstractOrderedTask<Object> {
 
@@ -64,7 +64,7 @@ public class WaitingPriorityBlockingQueueTest {
         Task grandChild1 = new Task("gc1", child1);
         Task grandChild2 = new Task("gc2", child2);
 
-        WaitingPriorityBlockingQueue<Task> q = new WaitingPriorityBlockingQueue<Task>();
+        OrderedTaskBlockingQueue<Task> q = new OrderedTaskBlockingQueue<Task>();
 
         //add in "random" order
         q.add(grandChild1);
@@ -107,7 +107,7 @@ public class WaitingPriorityBlockingQueueTest {
         Task grandChild1 = new Task("gc1", child1);
         Task grandChild2 = new Task("gc2", child2);
 
-        WaitingPriorityBlockingQueue<Task> q = new WaitingPriorityBlockingQueue<Task>();
+        OrderedTaskBlockingQueue<Task> q = new OrderedTaskBlockingQueue<Task>();
 
         //add in "random" order
         q.add(grandChild1);
@@ -159,7 +159,7 @@ public class WaitingPriorityBlockingQueueTest {
     public void test() {
         ThreadPoolExecutor e =
             new ThreadPoolExecutor(1, 1, 1, null, new BlockingQueueWrapper<Runnable, OrderedRunnableTask>(
-                new WaitingPriorityBlockingQueue<OrderedRunnableTask>(),
+                new OrderedTaskBlockingQueue<OrderedRunnableTask>(),
                 new BlockingQueueWrapper.CastingWrapper<Runnable, OrderedRunnableTask>()));
     }
 }
