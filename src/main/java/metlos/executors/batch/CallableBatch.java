@@ -19,22 +19,33 @@
 
 package metlos.executors.batch;
 
+import java.util.LinkedList;
 import java.util.Queue;
 
 /**
- * A batch is just a queue of tasks to run.
+ * This is a batch of callables. The {@link #call()} method is final and always returns null because
+ * a this class is to be used as a batch and is therefore never directly returned from 
+ * a {@link BatchAwareQueue}.
  *
  * @author Lukas Krejci
  */
-public interface Batch<T> {
-    
+public class CallableBatch<V> implements BatchedCallable<V> {
+
+    private Queue<BatchedCallable<V>> queue = new LinkedList<BatchedCallable<V>>();
+
+    @Override
+    public Queue<BatchedCallable<V>> getTasks() {
+        return queue;
+    }
+
     /**
-     * The list of tasks this batch consists of. 
-     * <p>
-     * This <b>can</b> be null. See {@link BatchAwareQueue} on
-     * how it interprets such return value.
-     * 
-     * @return the queue of consitutuent tasks.
+     * @return null. This is a final method because the callable batch always returns non-null
+     * {@link #getTasks() tasks} and therefore is always understood as a batch of tasks and not
+     * a callable.
      */
-    Queue<T> getTasks();
+    @Override
+    public final V call() throws Exception {
+        return null;
+    }
+
 }

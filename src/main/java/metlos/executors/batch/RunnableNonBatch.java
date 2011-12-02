@@ -19,17 +19,18 @@
 
 package metlos.executors.batch;
 
-import java.util.concurrent.Callable;
-import java.util.concurrent.Future;
+import java.util.Queue;
 
 /**
- * 
+ * A class similar to {@link CallableNonBatch} but used with runnables.
  *
  * @author Lukas Krejci
  */
-public interface BatchingExecutorService {
+public abstract class RunnableNonBatch implements BatchedRunnable {
 
-    Future<?> submitRunnable(Batch<Runnable> runnableBatch);
-    
-    <T> Future<T> submitCallable(Batch<Callable<T>> callableBatch);
+    @Override
+    public final Queue<BatchedRunnable> getTasks() {
+        return null;
+    }
+
 }

@@ -19,22 +19,13 @@
 
 package metlos.executors.batch;
 
-import java.util.Queue;
+import java.util.concurrent.Callable;
 
 /**
- * A batch is just a queue of tasks to run.
+ * A batch that is also a callable.
  *
  * @author Lukas Krejci
  */
-public interface Batch<T> {
-    
-    /**
-     * The list of tasks this batch consists of. 
-     * <p>
-     * This <b>can</b> be null. See {@link BatchAwareQueue} on
-     * how it interprets such return value.
-     * 
-     * @return the queue of consitutuent tasks.
-     */
-    Queue<T> getTasks();
+public interface BatchedCallable<V> extends Batch<BatchedCallable<V>>, Callable<V> {
+
 }

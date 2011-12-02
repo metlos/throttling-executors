@@ -19,22 +19,25 @@
 
 package metlos.executors.batch;
 
+import java.util.LinkedList;
 import java.util.Queue;
 
 /**
- * A batch is just a queue of tasks to run.
+ * A class similar to {@link CallableBatch} but used with runnables. 
  *
  * @author Lukas Krejci
  */
-public interface Batch<T> {
+public class RunnableBatch implements BatchedRunnable {
+
+    private Queue<BatchedRunnable> queue = new LinkedList<BatchedRunnable>();
     
-    /**
-     * The list of tasks this batch consists of. 
-     * <p>
-     * This <b>can</b> be null. See {@link BatchAwareQueue} on
-     * how it interprets such return value.
-     * 
-     * @return the queue of consitutuent tasks.
-     */
-    Queue<T> getTasks();
+    @Override
+    public final void run() {
+    }
+
+    @Override
+    public Queue<BatchedRunnable> getTasks() {
+        return queue;
+    }
+
 }

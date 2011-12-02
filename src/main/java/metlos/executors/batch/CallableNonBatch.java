@@ -20,21 +20,24 @@
 package metlos.executors.batch;
 
 import java.util.Queue;
+import java.util.concurrent.Callable;
 
 /**
- * A batch is just a queue of tasks to run.
+ * This is an implementation of the {@link BatchedCallable} that implements the
+ * non-batching behaviour. I.e. subclasses of this class are understood by the {@link BatchAwareQueue} as
+ * "elements" and not batches.
+ * <p>
+ * The subclasses need to implement the {@link Callable#call() call()} method specified by the {@link Callable} interface. 
  *
  * @author Lukas Krejci
  */
-public interface Batch<T> {
-    
+public abstract class CallableNonBatch<V> implements BatchedCallable<V> {
+
     /**
-     * The list of tasks this batch consists of. 
-     * <p>
-     * This <b>can</b> be null. See {@link BatchAwareQueue} on
-     * how it interprets such return value.
-     * 
-     * @return the queue of consitutuent tasks.
+     * @return null so that this instance is understood as a non-batch element by the {@link BatchAwareQueue}.
      */
-    Queue<T> getTasks();
+    @Override
+    public final Queue<BatchedCallable<V>> getTasks() {
+        return null;
+    }
 }
