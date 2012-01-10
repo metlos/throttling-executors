@@ -23,6 +23,7 @@ import java.util.AbstractQueue;
 import java.util.Deque;
 import java.util.Iterator;
 import java.util.LinkedList;
+import java.util.NoSuchElementException;
 import java.util.Queue;
 
 /**
@@ -55,8 +56,60 @@ import java.util.Queue;
  */
 public class BatchAwareQueue<E extends Batch<E>> extends AbstractQueue<E> {
 
+    private static class IdentifiableIterator<T extends Batch<T>> implements Iterator<T> {
+        private T batch;
+        private Iterator<T> it;
+        
+        public IdentifiableIterator(T batch) {
+            this.batch = batch;
+            Queue<T> tasks = batch.getTasks();
+            if (tasks != null) {
+                it = tasks.iterator();
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            return it == null ? false : it.hasNext();
+        }
+
+        @Override
+        public T next() {
+            if (it == null) {
+                throw new NoSuchElementException();
+            }
+            return it.next();
+        }
+
+        @Override
+        public void remove() {
+            if (it == null) {
+                throw new IllegalStateException();
+            }
+            it.remove();
+        }
+        
+        @Override
+        public int hashCode() {
+            return batch.hashCode();
+        }
+        
+        @Override
+        public boolean equals(Object other) {
+            if (other == this) {
+                return true;
+            }
+            
+            if (!(other instanceof IdentifiableIterator)) {
+                return false;
+            }
+            
+            return batch.equals(((IdentifiableIterator<?>)other).batch);
+        }
+    }
+    
     private static class BatchDrain<T extends Batch<T>> implements Iterator<T> {
-        private Deque<Iterator<T>> batchStack = new LinkedList<Iterator<T>>();
+        private Deque<IdentifiableIterator<T>> batchStack = new LinkedList<IdentifiableIterator<T>>();
         private T nextElement;
         
         public BatchDrain(T object) {
@@ -99,7 +152,7 @@ public class BatchAwareQueue<E extends Batch<E>> extends AbstractQueue<E> {
             if (constituents == null) {
                 nextElement = toBeNext;
             } else {
-                Iterator<T> it = constituents.iterator();
+                IdentifiableIterator<T> it = new IdentifiableIterator<T>(toBeNext);
                 if (it.hasNext()) {
                     if (batchStack.contains(it)) {
                         throw new IllegalArgumentException("The batch contains a loop.");
@@ -122,12 +175,12 @@ public class BatchAwareQueue<E extends Batch<E>> extends AbstractQueue<E> {
         }
     }
     
-    private class MyIterator implements Iterator<E> {
+    public class BatchIterator implements Iterator<E> {
         private Iterator<E> elementIterator;
         private BatchDrain<E> currentDrain;
         private E nextElement;
         
-        public MyIterator() {
+        public BatchIterator() {
             elementIterator = elements.iterator();
             initNext();
         }
@@ -214,9 +267,13 @@ public class BatchAwareQueue<E extends Batch<E>> extends AbstractQueue<E> {
 
     @Override
     public Iterator<E> iterator() {
-        return new MyIterator();
+        return batchIterator();
     }
 
+    public BatchIterator batchIterator() {
+        return new BatchIterator();
+    }
+    
     @Override
     public int size() {
         return computedSize;

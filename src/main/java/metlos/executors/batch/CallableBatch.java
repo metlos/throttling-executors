@@ -29,10 +29,14 @@ import java.util.Queue;
  *
  * @author Lukas Krejci
  */
-public class CallableBatch<V> implements BatchedCallable<V> {
+public class CallableBatch<V> extends AbstractBatch<BatchedCallable<V>> implements BatchedCallable<V> {
 
-    private Queue<BatchedCallable<V>> queue = new LinkedList<BatchedCallable<V>>();
-
+    private final Queue<BatchedCallable<V>> queue = new ParentUpdatingQueue(new LinkedList<BatchedCallable<V>>());
+    
+    public CallableBatch(BatchedCallable<V> parent) {
+        super(parent);
+    }
+    
     @Override
     public Queue<BatchedCallable<V>> getTasks() {
         return queue;

@@ -31,8 +31,12 @@ import java.util.concurrent.Callable;
  *
  * @author Lukas Krejci
  */
-public abstract class CallableNonBatch<V> implements BatchedCallable<V> {
+public abstract class CallableNonBatch<V> extends AbstractBatch<BatchedCallable<V>> implements BatchedCallable<V> {
 
+    public CallableNonBatch(BatchedCallable<V> parent) {
+        super(parent);
+    }
+    
     /**
      * @return null so that this instance is understood as a non-batch element by the {@link BatchAwareQueue}.
      */

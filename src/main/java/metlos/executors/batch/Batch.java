@@ -28,6 +28,10 @@ import java.util.Queue;
  */
 public interface Batch<T> {
     
+    Batch<T> getParentBatch();
+    
+    void setParentBatch(Batch<T> batch);
+    
     /**
      * The list of tasks this batch consists of. 
      * <p>

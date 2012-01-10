@@ -74,6 +74,10 @@ public class BlockingQueueWrapper<T, E extends T> implements BlockingQueue<T> {
         this.wrapper = wrapper;
     }
 
+    public BlockingQueue<E> getWrappedQueue() {
+        return inner;
+    }
+    
     @Override
     public int size() {
         return inner.size();

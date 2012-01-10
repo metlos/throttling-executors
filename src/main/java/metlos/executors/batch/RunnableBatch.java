@@ -27,9 +27,13 @@ import java.util.Queue;
  *
  * @author Lukas Krejci
  */
-public class RunnableBatch implements BatchedRunnable {
+public class RunnableBatch extends AbstractBatch<BatchedRunnable> implements BatchedRunnable {
 
-    private Queue<BatchedRunnable> queue = new LinkedList<BatchedRunnable>();
+    private final Queue<BatchedRunnable> queue = new ParentUpdatingQueue(new LinkedList<BatchedRunnable>());
+    
+    public RunnableBatch(BatchedRunnable parent) {
+        super(parent);
+    }
     
     @Override
     public final void run() {

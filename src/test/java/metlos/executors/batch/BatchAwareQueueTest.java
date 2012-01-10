@@ -42,14 +42,20 @@ import org.testng.annotations.Test;
 @Test
 public class BatchAwareQueueTest {
 
-    private static class B implements Batch<B> {
+    private static class B extends AbstractBatch<B> {
 
         private Queue<B> tasks;
         
-        public B(Queue<B> tasks) {
+        public B(B parent, Queue<B> tasks) {
+            super(parent);
             this.tasks = tasks;
+            if (tasks != null) {
+                for(B t : tasks) {
+                    t.setParentBatch(this);
+                }
+            }
         }
-        
+                
         @Override
         public Queue<B> getTasks() {
             return tasks;
@@ -85,7 +91,7 @@ public class BatchAwareQueueTest {
     public void testEmptyBatchLeftOut() {
         BatchAwareQueue<B> q = new BatchAwareQueue<B>();
         
-        B empty = new B(new LinkedList<B>());
+        B empty = new B(null, new LinkedList<B>());
         
         q.add(empty);
         
@@ -97,7 +103,7 @@ public class BatchAwareQueueTest {
     public void testNonBatchElementPollable() {
         BatchAwareQueue<B> q = new BatchAwareQueue<B>();
         
-        B nonBatch = new B(null);
+        B nonBatch = new B(null, null);
         q.add(nonBatch);
         
         assertEquals(q.size(), 1, "A non-batch should act as a single element in the queue.");
@@ -108,13 +114,13 @@ public class BatchAwareQueueTest {
     public void testNestedBatchesHandled() {
         BatchAwareQueue<B> q = new BatchAwareQueue<B>();
         
-        B el1 = new B(null);
-        B el2 = new B(null);
-        B el3 = new B(null);
+        B el1 = new B(null, null);
+        B el2 = new B(null, null);
+        B el3 = new B(null, null);
         
-        B nested = new B(new LinkedList<B>(Arrays.asList(el2, el3)));
+        B nested = new B(null, new LinkedList<B>(Arrays.asList(el2, el3)));
         
-        B top = new B(new LinkedList<B>(Arrays.asList(el1, nested)));
+        B top = new B(null, new LinkedList<B>(Arrays.asList(el1, nested)));
         
         q.add(top);
         
@@ -130,13 +136,13 @@ public class BatchAwareQueueTest {
     public void testIteratorTraversesBatchesRecursively() {
         BatchAwareQueue<B> q = new BatchAwareQueue<B>();
         
-        B el1 = new B(null);
-        B el2 = new B(null);
-        B el3 = new B(null);
+        B el1 = new B(null, null);
+        B el2 = new B(null, null);
+        B el3 = new B(null, null);
         
-        B nested = new B(new LinkedList<B>(Arrays.asList(el1, el2)));
+        B nested = new B(null, new LinkedList<B>(Arrays.asList(el1, el2)));
         
-        B top = new B(new LinkedList<B>(Arrays.asList(nested, el3)));
+        B top = new B(null, new LinkedList<B>(Arrays.asList(nested, el3)));
         
         q.add(top);
 
@@ -153,5 +159,81 @@ public class BatchAwareQueueTest {
     
     public void testSizeTakesBatchNestingIntoAccount() {
         testNestedBatchesHandled();
+    }
+    
+    public void testOwningBatchReportedCorrectly() {
+        BatchAwareQueue<B> q = new BatchAwareQueue<B>();
+        
+        B el1 = new B(null, null);
+        B el2 = new B(null, null);
+        B el3 = new B(null, null);
+        
+        B nested = new B(null, new LinkedList<B>(Arrays.asList(el1, el2)));
+        
+        B top = new B(null, new LinkedList<B>(Arrays.asList(nested, el3)));
+        
+        q.add(top);
+        
+        B polled = q.poll();
+        assertSame(polled.getParentBatch(), nested, "Unexpected owning batch reported");
+        polled = q.poll();
+        assertSame(polled.getParentBatch(), nested, "Unexpected owning batch reported");
+        polled = q.poll();
+        assertSame(polled.getParentBatch(), top, "Unexpected owning batch reported");
+        
+        assertTrue(q.isEmpty(), "The queue should have only contained 3 elements.");
+    }
+
+    public void testOwningBatchReportedCorrectlyByIterator() {
+        BatchAwareQueue<B> q = new BatchAwareQueue<B>();
+        
+        B el1 = new B(null, null);
+        B el2 = new B(null, null);
+        B el3 = new B(null, null);
+        
+        B nested = new B(null, new LinkedList<B>(Arrays.asList(el1, el2)));
+        
+        B top = new B(null, new LinkedList<B>(Arrays.asList(nested, el3)));
+        
+        q.add(top);
+        
+        BatchAwareQueue<B>.BatchIterator it = q.batchIterator();
+        
+        B polled = it.next();
+        assertSame(polled.getParentBatch(), nested, "Unexpected owning batch reported");
+        polled = it.next();
+        assertSame(polled.getParentBatch(), nested, "Unexpected owning batch reported");
+        polled = it.next();
+        assertSame(polled.getParentBatch(), top, "Unexpected owning batch reported");        
+        
+        assertFalse(it.hasNext(), "The iterator should see no more elements.");
+    }
+    
+    public void testBatchLoopDetection() {
+        BatchAwareQueue<B> q = new BatchAwareQueue<B>();
+        
+        B loopy = new B(null, new LinkedList<B>());
+        loopy.getTasks().add(loopy);
+        
+        try {
+            q.add(loopy);
+            fail();
+        } catch (IllegalArgumentException e) {
+            //yay
+        }
+        
+        //the detection is eager, we should see the loop detected even
+        //if the self-reference is deep.
+        loopy.getTasks().remove(loopy);
+        B nested = new B(null, new LinkedList<B>(Arrays.asList(loopy)));
+        loopy.getTasks().offer(new B(null, null));
+        loopy.getTasks().offer(nested);
+        
+        try {
+            q.add(loopy);
+            fail();
+        } catch (IllegalArgumentException e) {
+            //yay
+        }
     }
 }

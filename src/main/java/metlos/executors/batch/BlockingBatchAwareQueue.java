@@ -19,22 +19,20 @@
 
 package metlos.executors.batch;
 
-import java.util.Queue;
+import metlos.executors.support.QueueBlockingDecorator;
 
 /**
- * A class similar to {@link CallableNonBatch} but used with runnables.
+ * 
  *
  * @author Lukas Krejci
  */
-public abstract class RunnableNonBatch extends AbstractBatch<BatchedRunnable> implements BatchedRunnable {
+public class BlockingBatchAwareQueue<E extends Batch<E>> extends QueueBlockingDecorator<E> {
 
-    public RunnableNonBatch(BatchedRunnable parent) {
-        super(parent);
+    public BlockingBatchAwareQueue() {
+        this(new BatchAwareQueue<E>());
     }
     
-    @Override
-    public final Queue<BatchedRunnable> getTasks() {
-        return null;
+    public BlockingBatchAwareQueue(BatchAwareQueue<E> q) {
+        super(q);
     }
-
 }
