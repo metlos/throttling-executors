@@ -6,7 +6,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
 
-public abstract class AbstractOrderedTask<T> implements OrderedTask {
+public abstract class AbstractOrderedTask<T> implements OrderedTask, Comparable<OrderedTask> {
 
     private final Set<OrderedTask> predecessors;
     private volatile boolean finished;
@@ -56,7 +56,7 @@ public abstract class AbstractOrderedTask<T> implements OrderedTask {
     public int getDepth() {
         return depth;
     }
-
+    
     @Override
     public int compareTo(OrderedTask o) {
         return OrderedTaskComparator.compareStatically(this, o);
@@ -67,7 +67,8 @@ public abstract class AbstractOrderedTask<T> implements OrderedTask {
         return payload == null ? 0 : payload.hashCode();
     }
 
-    protected void setFinished(boolean finished) {
+    @Override
+    public void setFinished(boolean finished) {
         this.finished = finished;
     }
 

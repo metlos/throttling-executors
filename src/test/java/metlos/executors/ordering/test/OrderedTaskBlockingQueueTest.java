@@ -19,12 +19,8 @@
 
 package metlos.executors.ordering.test;
 
-import java.util.concurrent.ThreadPoolExecutor;
-
 import metlos.executors.ordering.AbstractOrderedTask;
-import metlos.executors.ordering.OrderedRunnableTask;
 import metlos.executors.ordering.OrderedTaskBlockingQueue;
-import metlos.executors.support.BlockingQueueWrapper;
 
 import org.testng.annotations.Test;
 
@@ -154,12 +150,5 @@ public class OrderedTaskBlockingQueueTest {
 
         t = q.poll();
         assert t == grandChild2 : "Granchild2 should be available";
-    }
-
-    public void test() {
-        ThreadPoolExecutor e =
-            new ThreadPoolExecutor(1, 1, 1, null, new BlockingQueueWrapper<Runnable, OrderedRunnableTask>(
-                new OrderedTaskBlockingQueue<OrderedRunnableTask>(),
-                new BlockingQueueWrapper.CastingWrapper<Runnable, OrderedRunnableTask>()));
     }
 }

@@ -12,7 +12,7 @@ import java.util.Set;
  * 
  * @author Lukas Krejci
  */
-public interface OrderedTask extends Comparable<OrderedTask> {
+public interface OrderedTask {
 
     /**
      * @return The set of tasks this task is directly dependent on.
@@ -35,4 +35,6 @@ public interface OrderedTask extends Comparable<OrderedTask> {
      * @return true if this task is considered finished.
      */
     boolean isFinished();    
+    
+    void setFinished(boolean value);
 }

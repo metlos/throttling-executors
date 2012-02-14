@@ -101,7 +101,7 @@ public class QueueBlockingDecorator<E> implements BlockingQueue<E> {
         try {
             E ret = q.poll();
             
-            if (ret != null && !isEmpty()) {
+            if (!isEmpty()) {
                 available.signalAll();
             }
             
@@ -287,7 +287,7 @@ public class QueueBlockingDecorator<E> implements BlockingQueue<E> {
         lock.lockInterruptibly();
         try {
             while(true) {
-                if (q.peek() == null && q.isEmpty()) {
+                if (q.isEmpty()) {
                     available.await();
                 } else {
                     E ret = q.poll();
