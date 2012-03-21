@@ -19,6 +19,7 @@
 
 package metlos.executors.batch;
 
+import java.util.Collection;
 import java.util.Collections;
 import java.util.Set;
 import java.util.concurrent.Callable;
@@ -138,4 +139,14 @@ public class OrderedBatchCpuThrottlingExecutor extends BatchCpuThrottlingExecuto
         }
         return new OrderedBatchReferringRunnable<T>(runnable, result, orderingProvider, batchRecord, idealFinishTime);
     };    
+    
+    @Override
+    protected void prepareForNextRepetition(Collection<? extends Runnable> tasks) {
+        for(Runnable r : tasks) {
+            if (r instanceof OrderedTask) {
+                OrderedTask ot = (OrderedTask) r;
+                ot.setFinished(false);
+            }
+        }
+    }
 }

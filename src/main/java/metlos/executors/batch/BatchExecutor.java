@@ -36,6 +36,7 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.LockSupport;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -69,6 +70,12 @@ public class BatchExecutor extends ThreadPoolExecutor {
         int nofElements;
     }
 
+    protected static class RepetitionRecord {
+        Collection<? extends Runnable> tasks;
+        long delayNanos;
+        long durationNanos;
+    }
+    
     protected static class BatchReferringRunnable<T> extends FutureTask<T> implements
         Comparable<BatchReferringRunnable<T>> {
         
@@ -114,26 +121,28 @@ public class BatchExecutor extends ThreadPoolExecutor {
                 runningTasks = batchRecord.currentlyRunningTasks.incrementAndGet();
             }
 
-            super.run();
-            
-            if (batchRecord != null) {
-                duration = now() - duration;
-                
-                if (LOG.isTraceEnabled()) {
-                    LOG.trace("Task " + this + " took " + duration + "ns.");
+            try {
+                super.run();
+            } finally {
+                if (batchRecord != null) {
+                    duration = now() - duration;
+                    
+                    if (LOG.isTraceEnabled()) {
+                        LOG.trace("Task " + this + " took " + duration + "ns.");
+                    }
+                    
+                    long executionTime = batchRecord.cumulativeExecutionTime.addAndGet(duration);
+                    int elementsRan = batchRecord.elementsRan.incrementAndGet();
+    
+                    batchRecord.nextElementStartTime
+                        .set(getNextIdealStartTime(runningTasks, executionTime, elementsRan));
+                    
+                    if (LOG.isTraceEnabled()) {
+                        LOG.trace("Setting the next task execution time to " + batchRecord.nextElementStartTime.get());
+                    }
+                    
+                    batchRecord.currentlyRunningTasks.decrementAndGet();
                 }
-                
-                long executionTime = batchRecord.cumulativeExecutionTime.addAndGet(duration);
-                int elementsRan = batchRecord.elementsRan.incrementAndGet();
-
-                batchRecord.nextElementStartTime
-                    .set(getNextIdealStartTime(runningTasks, executionTime, elementsRan));
-                
-                if (LOG.isTraceEnabled()) {
-                    LOG.trace("Setting the next task execution time to " + batchRecord.nextElementStartTime.get());
-                }
-                
-                batchRecord.currentlyRunningTasks.decrementAndGet();
             }
         }
 
@@ -171,6 +180,32 @@ public class BatchExecutor extends ThreadPoolExecutor {
         }
     }
 
+    protected class RepeatingBatchReferringRunnable extends BatchReferringRunnable<Void> {
+
+        protected final RepetitionRecord repetitionRecord;
+        
+        public RepeatingBatchReferringRunnable(Runnable runnable, BatchRecord batchRecord,
+            long idealFinishTimeNanos, RepetitionRecord repetitionRecord) {
+            super(runnable, null, batchRecord, idealFinishTimeNanos);
+            this.repetitionRecord = repetitionRecord;
+        }
+        
+        @Override
+        public void run() {
+            try {
+                super.run();
+            } finally {
+                rescheduleIfNeeded();
+            }
+        }
+        
+        protected void rescheduleIfNeeded() {
+            if (batchRecord.nofElements <= batchRecord.elementsRan.get() && batchRecord.currentlyRunningTasks.get() == 0) {
+                BatchExecutor.this.submitWithPreferedDurationAndFixedDelay(repetitionRecord.tasks, repetitionRecord.delayNanos, repetitionRecord.durationNanos, repetitionRecord.delayNanos, TimeUnit.NANOSECONDS);
+            }
+        }
+    }
+    
     /**
      * System.nanoTime() is not required to be positive, so let's establish
      * a base from which to start counting the time.
@@ -413,13 +448,13 @@ public class BatchExecutor extends ThreadPoolExecutor {
      * {@link #invokeAll(Collection)} method).
      */
     public List<Future<?>> executeAllWithin(Collection<? extends Runnable> commands, long duration, TimeUnit unit) {
-        BatchRecord batchRecord = createNewBatchRecord(commands.size(), unit, duration);
+        BatchRecord batchRecord = createNewBatchRecord(commands.size(), unit, duration, 0);
 
         //it actually is ok if this is negative - we've got so little time to execute
         //the tasks that we are late already :) - because the execution time of the tasks
         //will be in past, they will be scheduled with no further delays
-        long increment = (batchRecord.finishTimeNanos - now()) / batchRecord.nofElements;
         long idealFinishTime = batchRecord.nextElementStartTime.get();
+        long increment = (batchRecord.finishTimeNanos - idealFinishTime) / batchRecord.nofElements;
         List<Future<?>> ret = new ArrayList<Future<?>>();
         for (Runnable command : commands) {
             RunnableFuture<?> task = newTaskFor(command, null, batchRecord, idealFinishTime);
@@ -440,10 +475,10 @@ public class BatchExecutor extends ThreadPoolExecutor {
      * @see #executeAllWithin(Collection, long, TimeUnit)
      */
     public void submitWithPreferedDuration(Collection<? extends Runnable> commands, long duration, TimeUnit unit) {
-        BatchRecord batchRecord = createNewBatchRecord(commands.size(), unit, duration);
+        BatchRecord batchRecord = createNewBatchRecord(commands.size(), unit, duration, 0);
 
-        long increment = (batchRecord.finishTimeNanos - now()) / batchRecord.nofElements;
         long idealFinishTime = batchRecord.nextElementStartTime.get();
+        long increment = (batchRecord.finishTimeNanos - idealFinishTime) / batchRecord.nofElements;
         for (Runnable command : commands) {
             RunnableFuture<?> task = newTaskFor(command, null, batchRecord, idealFinishTime);
             super.execute(task);
@@ -452,12 +487,50 @@ public class BatchExecutor extends ThreadPoolExecutor {
     }
     
     /**
+     * Another variation on {@link #invokeAllWithin(Collection, long, TimeUnit)}. The commands
+     * will be run repeatedly (forever) with each "batch" executing with given duration.
+     * There will be a given delay between two consecutive executions of the command sets.
+     * <p>
+     * Each execution takes a snapshot of the provided collection and executes only the commands
+     * present in the collection at the time of the call of this method. Once all the commands executed,
+     * another snapshot of the collection is taken and the commands are rescheduled.
+     * <p>
+     * This means that if you intend the collection of the commands to be mutable and change over time once
+     * it has been submitted to the executor, the collection <b>MUST</b> be able to handle concurrent
+     * access and modification.
+     * 
+     * @param commands the collection of commands to repeatedly execute
+     * @param initialDelay the initial delay before the execution starts (in the provided time unit)
+     * @param duration the expected duration of the execution of all commands
+     * @param delay the delay between two consecutive executions of the command sets
+     * @param unit the time unit of the time related parameters
+     */
+    public void submitWithPreferedDurationAndFixedDelay(Collection<? extends Runnable> commands, long initialDelay, long duration, long delay, TimeUnit unit) {
+        prepareForNextRepetition(commands);
+        
+        BatchRecord batchRecord = createNewBatchRecord(commands.size(), unit, duration, initialDelay);
+        
+        RepetitionRecord repetitionRecord = new RepetitionRecord();
+        repetitionRecord.tasks = commands;
+        repetitionRecord.delayNanos = unit.toNanos(delay);
+        repetitionRecord.durationNanos = unit.toNanos(duration);
+        
+        long idealFinishTime = batchRecord.nextElementStartTime.get();
+        long increment = (batchRecord.finishTimeNanos - idealFinishTime) / batchRecord.nofElements;
+        for (Runnable command : commands) {
+            RunnableFuture<?> task = new RepeatingBatchReferringRunnable(command, batchRecord, idealFinishTime, repetitionRecord);
+            super.execute(task);
+            idealFinishTime += increment;
+        }
+    }
+        
+    /**
      * Akin to {@link #executeAllWithin(Collection, long, TimeUnit)} but using Callables.
      */
     public <T> List<Future<T>>
         invokeAllWithin(Collection<? extends Callable<T>> commands, long duration, TimeUnit unit) {
-        BatchRecord batchRecord = createNewBatchRecord(commands.size(), unit, duration);
-
+        BatchRecord batchRecord = createNewBatchRecord(commands.size(), unit, duration, 0);
+        
         //it actually is ok if this is negative - we've got so little time to execute
         //the tasks that we are late already :) - because the execution time of the tasks
         //will be in past, they will be scheduled with no further delays
@@ -474,26 +547,6 @@ public class BatchExecutor extends ThreadPoolExecutor {
         return ret;
     }
 
-    /**
-     * Akin to {@link #invokeAllWithin(Collection, long, TimeUnit)} but doesn't collect the futures.
-     * <p>
-     * This method is more appropriate if you don't need to know the results of the commands or if you
-     * submit a large number of them and are memory-constrained.
-     *
-     * @see #invokeAllWithin(Collection, long, TimeUnit)
-     */
-    public <T> void submitCallablesWithPreferedDuration(Collection<? extends Callable<T>> commands, long duration, TimeUnit unit) {
-        BatchRecord batchRecord = createNewBatchRecord(commands.size(), unit, duration);
-
-        long increment = (batchRecord.finishTimeNanos - now()) / batchRecord.nofElements;
-        long idealFinishTime = batchRecord.nextElementStartTime.get();
-        for (Callable<T> command : commands) {
-            RunnableFuture<T> task = newTaskFor(command, batchRecord, idealFinishTime);
-            super.execute(task);
-            idealFinishTime += increment;
-        }
-    }
-    
     protected <T> RunnableFuture<T> newTaskFor(Callable<T> callable, BatchRecord batchRecord, long idealFinishTime) {
         return new BatchReferringRunnable<T>(callable, batchRecord, idealFinishTime);
     }
@@ -518,10 +571,10 @@ public class BatchExecutor extends ThreadPoolExecutor {
         return System.nanoTime() - EPOCH_START;
     }
 
-    protected static BatchRecord createNewBatchRecord(int nofElements, TimeUnit unit, long duration) {
+    protected static BatchRecord createNewBatchRecord(int nofElements, TimeUnit unit, long duration, long initialDelay) {
         BatchRecord batchRecord = new BatchRecord();
         batchRecord.nofElements = nofElements;
-        long now = now();
+        long now = now() + unit.toNanos(initialDelay);
         batchRecord.nextElementStartTime.set(now);
         batchRecord.finishTimeNanos = now + unit.toNanos(duration);
         return batchRecord;
@@ -531,7 +584,7 @@ public class BatchExecutor extends ThreadPoolExecutor {
      * Called during construction. This method ensures that the core threads are initialized
      * which ensures correct behavior when submitting tasks for execution.
      * <p>
-     * If you override this class, make sure to call <code>super.init();</code> otherwise
+     * If you override this method, make sure to call <code>super.init();</code> otherwise
      * the executor won't behave as expected.
      */
     protected void init() {
@@ -539,5 +592,17 @@ public class BatchExecutor extends ThreadPoolExecutor {
         //than submitted directly. We do depend on this because the queue is actually
         //responsible for delaying the tasks until they are ready.
         prestartAllCoreThreads();
+    }
+    
+    /**
+     * If the tasks need some kind of pre-processing before they are submitted for the next repeated
+     * execution, the subclasses may override this method to perform such pre-processing.
+     * <p>
+     * By default, this method does nothing.
+     * 
+     * @param tasks
+     */
+    protected void prepareForNextRepetition(Collection<? extends Runnable> tasks) {
+        //default implementation does nothing
     }
 }

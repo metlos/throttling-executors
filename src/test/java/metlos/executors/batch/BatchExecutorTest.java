@@ -20,14 +20,18 @@
 package metlos.executors.batch;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Random;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -121,6 +125,117 @@ public class BatchExecutorTest {
         
         LOG.info("testTimingApproachingLimitNumberOfTasks_MultiThreaded() stats: expectedDuration=" + expectedDuration + ", actualDuration=" + actualDuration + ", diff=" + (actualDuration - expectedDuration)); 
         assert actualDuration > min && actualDuration < max : "Duration should have been something between " + min + " and " + max + "ms (ideally " + expectedDuration + ") but was " + actualDuration + "ms.";
+    }
+
+    public void testRepetitionOfTasks_SingleThreaded() throws Exception {
+        runSimpleDelayTest(1);
+    }
+    
+    public void testRepetitionOfTasks_MultiThreaded() throws Exception {
+        runSimpleDelayTest(10);
+    }
+    
+    public void testChangesInTaskCollectionPickedUpInRepetitions() throws Exception {
+        final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<Runnable>();
+        final AtomicInteger reportedNofTasks = new AtomicInteger();
+        
+        Runnable task1 = new Runnable() {
+            @Override
+            public void run() {
+            }
+        };
+        
+        Runnable task2 = new Runnable() {
+            @Override
+            public void run() {
+                if (tasks.size() == 2) {
+                    reportedNofTasks.set(2);
+                }
+            }
+        };
+        
+        Runnable task3 = new Runnable() {
+            @Override
+            public void run() {
+                if (tasks.size() == 3) {
+                    reportedNofTasks.set(3);
+                }
+            }
+        };
+        
+        BatchExecutor ex = getExecutor(10);
+        
+        tasks.add(task1);
+        tasks.add(task2);
+        
+        ex.submitWithPreferedDurationAndFixedDelay(tasks, 0, 0, 0, TimeUnit.MILLISECONDS);
+        
+        //k, now the tasks should be running and there should be just 2 of them...
+        //so we should be getting the value of "2" reported by the reportedNofTasks
+        
+        Thread.sleep(100);
+        
+        int currentReportedTasks = reportedNofTasks.get();
+        
+        assert currentReportedTasks == 2 : "We should be getting 2 tasks reported but are getting " + currentReportedTasks + " instead.";        
+
+        //k, now let's try updating the tasks collection... this should get picked up by the
+        //repeated executions 
+        tasks.add(task3);
+        
+        //now the reported nof tasks should change to 3. let's sleep on it first to make sure the executor has had time to 
+        //register the change.        
+        Thread.sleep(100);
+        
+        currentReportedTasks = reportedNofTasks.get();
+        
+        assert currentReportedTasks == 3 : "We should be getting 3 tasks reported but are getting " + currentReportedTasks + " instead.";
+        
+        ex.shutdown();
+    }
+    
+    private void runSimpleDelayTest(int nofThreads) throws Exception {
+        final ConcurrentLinkedQueue<Long> executionTimes = new ConcurrentLinkedQueue<Long>();
+
+        Runnable task = new Runnable() {
+            @Override
+            public void run() {
+                executionTimes.add(System.currentTimeMillis());
+            }
+        };
+
+        BatchExecutor ex = getExecutor(nofThreads);
+
+        //start running my task... the task should "take" 0ms and there should be a delay
+        //of 10ms between executions... the executionTimes collection should therefore
+        //contain time stamps 10ms apart from each other.
+        ex.submitWithPreferedDurationAndFixedDelay(Collections.singleton(task), 0, 0, 10, TimeUnit.MILLISECONDS);
+
+        Thread.sleep(1000);
+
+        ex.shutdown();
+        
+        assert executionTimes.size() > 1 : "There should have been more than 1 task executed.";
+
+        long minDelay = 8; //10ms +- 20%
+        long maxDelay = 12;
+        int nofElements = executionTimes.size();
+        
+        long previousTime = executionTimes.poll();
+        long cummulativeDiff = 0;
+        while (!executionTimes.isEmpty()) {
+            long thisTime = executionTimes.poll();
+
+            long diff = thisTime - previousTime;            
+            cummulativeDiff += diff;
+            
+            previousTime = thisTime;
+        }
+
+        long averageDelay = cummulativeDiff / (nofElements - 1);
+
+        assert minDelay < averageDelay && averageDelay < maxDelay : "The average delay should be in <" + minDelay
+            + ", " + maxDelay + "> but was " + averageDelay + ".";
     }
     
     private static BatchExecutor getExecutor(int nofThreads) {
