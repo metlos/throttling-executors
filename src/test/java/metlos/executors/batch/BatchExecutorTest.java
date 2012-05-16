@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.Random;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -60,8 +61,8 @@ public class BatchExecutorTest {
         long expectedDuration = minimalDuration * 2;
         long actualDuration = measureExecutionTime(System.currentTimeMillis(), ex.invokeAllWithin(tasks, expectedDuration, TimeUnit.MILLISECONDS));
         
-        long min = (long) (expectedDuration * 0.90);
-        long max = (long) (expectedDuration * 1.10);
+        long min = (long) (expectedDuration * 0.85);
+        long max = (long) (expectedDuration * 1.15);
         
         LOG.info("testTimingOfFewTasks_SingleThreaded() stats: expectedDuration=" + expectedDuration + ", actualDuration=" + actualDuration + ", diff=" + (actualDuration - expectedDuration)); 
         assert actualDuration > min && actualDuration < max : "Duration should have been something between " + min + " and " + max + "ms (ideally " + expectedDuration + ") but was " + actualDuration + "ms.";
@@ -80,8 +81,8 @@ public class BatchExecutorTest {
         long expectedDuration = minimalDuration;
         long actualDuration = measureExecutionTime(System.currentTimeMillis(), ex.invokeAllWithin(tasks, expectedDuration, TimeUnit.MILLISECONDS));
         
-        long min = (long) (expectedDuration * 0.90);
-        long max = (long) (expectedDuration * 1.10);
+        long min = (long) (expectedDuration * 0.85);
+        long max = (long) (expectedDuration * 1.15);
         
         LOG.info("testTimingApproachingLimitNumberOfTasks_SingleThreaded() stats: expectedDuration=" + expectedDuration + ", actualDuration=" + actualDuration + ", diff=" + (actualDuration - expectedDuration)); 
         assert actualDuration > min && actualDuration < max : "Duration should have been something between " + min + " and " + max + "ms (ideally " + expectedDuration + ") but was " + actualDuration + "ms.";
@@ -100,8 +101,8 @@ public class BatchExecutorTest {
         long expectedDuration = minimalDuration * 2;
         long actualDuration = measureExecutionTime(System.currentTimeMillis(), ex.invokeAllWithin(tasks, expectedDuration, TimeUnit.MILLISECONDS));
         
-        long min = (long) (expectedDuration * 0.90);
-        long max = (long) (expectedDuration * 1.10);
+        long min = (long) (expectedDuration * 0.85);
+        long max = (long) (expectedDuration * 1.15);
         
         LOG.info("testTimingOfFewTasks_MultiThreaded() stats: expectedDuration=" + expectedDuration + ", actualDuration=" + actualDuration + ", diff=" + (actualDuration - expectedDuration)); 
         assert actualDuration > min && actualDuration < max : "Duration should have been something between " + min + " and " + max + "ms (ideally " + expectedDuration + ") but was " + actualDuration + "ms.";
@@ -120,8 +121,8 @@ public class BatchExecutorTest {
         long expectedDuration = minimalDuration;
         long actualDuration = measureExecutionTime(System.currentTimeMillis(), ex.invokeAllWithin(tasks, expectedDuration, TimeUnit.MILLISECONDS));
         
-        long min = (long) (expectedDuration * 0.90);
-        long max = (long) (expectedDuration * 1.10);
+        long min = (long) (expectedDuration * 0.85);
+        long max = (long) (expectedDuration * 1.15);
         
         LOG.info("testTimingApproachingLimitNumberOfTasks_MultiThreaded() stats: expectedDuration=" + expectedDuration + ", actualDuration=" + actualDuration + ", diff=" + (actualDuration - expectedDuration)); 
         assert actualDuration > min && actualDuration < max : "Duration should have been something between " + min + " and " + max + "ms (ideally " + expectedDuration + ") but was " + actualDuration + "ms.";
@@ -138,6 +139,8 @@ public class BatchExecutorTest {
     public void testChangesInTaskCollectionPickedUpInRepetitions() throws Exception {
         final ConcurrentLinkedQueue<Runnable> tasks = new ConcurrentLinkedQueue<Runnable>();
         final AtomicInteger reportedNofTasks = new AtomicInteger();
+        final CountDownLatch waitForTask2 = new CountDownLatch(2);
+        final CountDownLatch waitForTask3 = new CountDownLatch(2);
         
         Runnable task1 = new Runnable() {
             @Override
@@ -150,6 +153,7 @@ public class BatchExecutorTest {
             public void run() {
                 if (tasks.size() == 2) {
                     reportedNofTasks.set(2);
+                    waitForTask2.countDown();
                 }
             }
         };
@@ -159,6 +163,7 @@ public class BatchExecutorTest {
             public void run() {
                 if (tasks.size() == 3) {
                     reportedNofTasks.set(3);
+                    waitForTask3.countDown();
                 }
             }
         };
@@ -173,7 +178,8 @@ public class BatchExecutorTest {
         //k, now the tasks should be running and there should be just 2 of them...
         //so we should be getting the value of "2" reported by the reportedNofTasks
         
-        Thread.sleep(100);
+        waitForTask2.countDown();
+        waitForTask2.await();
         
         int currentReportedTasks = reportedNofTasks.get();
         
@@ -183,9 +189,10 @@ public class BatchExecutorTest {
         //repeated executions 
         tasks.add(task3);
         
-        //now the reported nof tasks should change to 3. let's sleep on it first to make sure the executor has had time to 
+        //now the reported nof tasks should change to 3. let's wait on it first to make sure the executor has had time to 
         //register the change.        
-        Thread.sleep(100);
+        waitForTask3.countDown();
+        waitForTask3.await();
         
         currentReportedTasks = reportedNofTasks.get();
         

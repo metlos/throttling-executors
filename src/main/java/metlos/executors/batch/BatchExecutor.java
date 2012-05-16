@@ -36,18 +36,19 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.locks.LockSupport;
+
+import metlos.executors.support.QueueBlockingDecorator;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 
-import metlos.executors.support.QueueBlockingDecorator;
-
 /**
- * This is an extension of the {@link ThreadPoolExecutor} that add 2 new methods:
+ * This is an extension of the {@link ThreadPoolExecutor} that add 4 new methods:
  * <ul>
  * <li> {@link #invokeAllWithin(Collection, long, TimeUnit)}
  * <li> {@link #executeAllWithin(Collection, long, TimeUnit)}
+ * <li> {@link #submitWithPreferedDuration(Collection, long, TimeUnit)}
+ * <li> {@link #submitWithPreferedDurationAndFixedDelay(Collection, long, long, long, TimeUnit)}
  * </ul>
  * <p>
  * Those methods ensure that given collection of tasks is executed in a time as close as possible
