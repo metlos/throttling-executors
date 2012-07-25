@@ -25,7 +25,6 @@ import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionHandler;
-import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 
@@ -39,24 +38,24 @@ import metlos.executors.ordering.OrderedTaskQueue;
  */
 public class OrderedBatchCpuThrottlingExecutor extends BatchCpuThrottlingExecutor {
 
-    private static class OrderedBatchReferringRunnable<T> extends BatchReferringRunnable<T> implements OrderedTask {
+    private class OrderedBatchReferringRunnable<T> extends BatchReferringRunnable<T> implements OrderedTask {
 
         private final OrderedTask orderingProvider;
-        private boolean finished;
+        private volatile boolean finished;
         
-        public OrderedBatchReferringRunnable(Callable<T> callable, OrderedTask orderingProvider, BatchRecord batchRecord, long idealFinishTimeNanos) {
-            super(callable, batchRecord, idealFinishTimeNanos);
+        public OrderedBatchReferringRunnable(Callable<T> callable, OrderedTask orderingProvider, BatchRecord batchRecord, RepetitionRecord repetitionRecord, long idealFinishTimeNanos) {
+            super(callable, batchRecord, repetitionRecord, idealFinishTimeNanos);
             this.orderingProvider = orderingProvider;
         }
 
-        public OrderedBatchReferringRunnable(Runnable runnable, T returnValue, OrderedTask orderingProvider, BatchRecord batchRecord,
+        public OrderedBatchReferringRunnable(Runnable runnable, T returnValue, OrderedTask orderingProvider, BatchRecord batchRecord, RepetitionRecord repetitionRecord,
             long idealFinishTimeNanos) {
-            super(runnable, returnValue, batchRecord, idealFinishTimeNanos);
+            super(runnable, returnValue, batchRecord, repetitionRecord, idealFinishTimeNanos);
             this.orderingProvider = orderingProvider; 
         }        
         
         @Override
-        public int compareTo(BatchReferringRunnable<T> o) {
+        public int compareTo(BatchedRunnableFuture<T> o) {
             if (orderingProvider == null) {
                 return super.compareTo(o);
             }
@@ -123,21 +122,21 @@ public class OrderedBatchCpuThrottlingExecutor extends BatchCpuThrottlingExecuto
     }
 
     @Override
-    protected <T> RunnableFuture<T> newTaskFor(Callable<T> callable, BatchRecord batchRecord, long idealFinishTime) {
+    protected <T> BatchReferringRunnable<T> newTaskFor(Callable<T> callable, BatchRecord batchRecord, RepetitionRecord repetitionRecord, long idealFinishTime) {
         OrderedTask orderingProvider = null;
         if (callable instanceof OrderedTask) {
             orderingProvider = (OrderedTask) callable;
         }
-        return new OrderedBatchReferringRunnable<T>(callable, orderingProvider, batchRecord, idealFinishTime);
+        return new OrderedBatchReferringRunnable<T>(callable, orderingProvider, batchRecord, repetitionRecord, idealFinishTime);
     }
     
     @Override
-    protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T result, BatchRecord batchRecord, long idealFinishTime) {
+    protected <T> BatchReferringRunnable<T> newTaskFor(Runnable runnable, T result, BatchRecord batchRecord, RepetitionRecord repetitionRecord, long idealFinishTime) {
         OrderedTask orderingProvider = null;
         if (runnable instanceof OrderedTask) {
             orderingProvider = (OrderedTask) runnable;
         }
-        return new OrderedBatchReferringRunnable<T>(runnable, result, orderingProvider, batchRecord, idealFinishTime);
+        return new OrderedBatchReferringRunnable<T>(runnable, result, orderingProvider, batchRecord, repetitionRecord, idealFinishTime);
     };    
     
     @Override

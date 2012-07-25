@@ -26,6 +26,7 @@ import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
@@ -34,6 +35,7 @@ import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -77,8 +79,17 @@ public class BatchExecutor extends ThreadPoolExecutor {
         long durationNanos;
     }
     
-    protected static class BatchReferringRunnable<T> extends FutureTask<T> implements
-        Comparable<BatchReferringRunnable<T>> {
+    protected interface BatchedRunnableFuture<T> extends RunnableFuture<T>, Comparable<BatchedRunnableFuture<T>> {
+    
+        BatchRecord getBatchRecord();
+        
+        long getIdealFinishTimeNanos();
+        
+        long getSequenceNumber();
+    }
+    
+    protected class BatchReferringRunnable<T> extends FutureTask<T> implements
+        BatchedRunnableFuture<T> {
         
         protected final BatchRecord batchRecord;
 
@@ -87,25 +98,44 @@ public class BatchExecutor extends ThreadPoolExecutor {
         protected final long idealFinishTimeNanos;
         protected final long sequenceNumber;
 
-        public BatchReferringRunnable(Callable<T> callable, BatchRecord batchRecord, long idealFinishTimeNanos) {
+        protected final RepetitionRecord repetitionRecord;
+        
+        public BatchReferringRunnable(Callable<T> callable, BatchRecord batchRecord, RepetitionRecord repetitionRecord, long idealFinishTimeNanos) {
             super(callable);
             this.batchRecord = batchRecord;
+            this.repetitionRecord = repetitionRecord;
             this.idealFinishTimeNanos = idealFinishTimeNanos;
             sequenceNumber = SEQUENCER.incrementAndGet();
         }
 
-        public BatchReferringRunnable(Runnable runnable, T returnValue, BatchRecord batchRecord,
+        public BatchReferringRunnable(Runnable runnable, T returnValue, BatchRecord batchRecord, RepetitionRecord repetitionRecord,
             long idealFinishTimeNanos) {
             super(runnable, returnValue);
             this.batchRecord = batchRecord;
+            this.repetitionRecord = repetitionRecord;
             this.idealFinishTimeNanos = idealFinishTimeNanos;
             sequenceNumber = SEQUENCER.incrementAndGet();
         }
 
+        @Override
         public BatchRecord getBatchRecord() {
             return batchRecord;
         }
 
+        public RepetitionRecord getRepetitionRecord() {
+            return repetitionRecord;
+        }
+        
+        @Override
+        public long getIdealFinishTimeNanos() {
+            return idealFinishTimeNanos;
+        }
+        
+        @Override
+        public long getSequenceNumber() {
+            return sequenceNumber;
+        }
+        
         @Override
         public void run() {
             long duration = 0;
@@ -143,10 +173,21 @@ public class BatchExecutor extends ThreadPoolExecutor {
                     }
                     
                     batchRecord.currentlyRunningTasks.decrementAndGet();
+                    
+                    if (repetitionRecord != null) {
+                        rescheduleIfNeeded();
+                    }
                 }
+                
             }
         }
 
+        protected void rescheduleIfNeeded() {
+            if (batchRecord.nofElements <= batchRecord.elementsRan.get() && batchRecord.currentlyRunningTasks.get() == 0) {
+                BatchExecutor.this.submitWithPreferedDurationAndFixedDelay(repetitionRecord.tasks, repetitionRecord.delayNanos, repetitionRecord.durationNanos, repetitionRecord.delayNanos, TimeUnit.NANOSECONDS);
+            }
+        }
+        
         protected long getNextIdealStartTime(int currentlyRunningTasks, long executionTime, int elementsRan) {
             long now = now();
             long time2Go = batchRecord.finishTimeNanos - now;
@@ -167,13 +208,13 @@ public class BatchExecutor extends ThreadPoolExecutor {
         }
 
         @Override
-        public int compareTo(BatchReferringRunnable<T> o) {
+        public int compareTo(BatchedRunnableFuture<T> o) {
             if (this == o) {
                 return 0;
             } else {
-                int diff = (int) (idealFinishTimeNanos - o.idealFinishTimeNanos);
+                int diff = (int) (idealFinishTimeNanos - o.getIdealFinishTimeNanos());
                 if (diff == 0) {
-                    return (int) (sequenceNumber - o.sequenceNumber);
+                    return (int) (sequenceNumber - o.getSequenceNumber());
                 } else {
                     return diff;
                 }
@@ -181,32 +222,6 @@ public class BatchExecutor extends ThreadPoolExecutor {
         }
     }
 
-    protected class RepeatingBatchReferringRunnable extends BatchReferringRunnable<Void> {
-
-        protected final RepetitionRecord repetitionRecord;
-        
-        public RepeatingBatchReferringRunnable(Runnable runnable, BatchRecord batchRecord,
-            long idealFinishTimeNanos, RepetitionRecord repetitionRecord) {
-            super(runnable, null, batchRecord, idealFinishTimeNanos);
-            this.repetitionRecord = repetitionRecord;
-        }
-        
-        @Override
-        public void run() {
-            try {
-                super.run();
-            } finally {
-                rescheduleIfNeeded();
-            }
-        }
-        
-        protected void rescheduleIfNeeded() {
-            if (batchRecord.nofElements <= batchRecord.elementsRan.get() && batchRecord.currentlyRunningTasks.get() == 0) {
-                BatchExecutor.this.submitWithPreferedDurationAndFixedDelay(repetitionRecord.tasks, repetitionRecord.delayNanos, repetitionRecord.durationNanos, repetitionRecord.delayNanos, TimeUnit.NANOSECONDS);
-            }
-        }
-    }
-    
     /**
      * System.nanoTime() is not required to be positive, so let's establish
      * a base from which to start counting the time.
@@ -458,7 +473,7 @@ public class BatchExecutor extends ThreadPoolExecutor {
         long increment = (batchRecord.finishTimeNanos - idealFinishTime) / batchRecord.nofElements;
         List<Future<?>> ret = new ArrayList<Future<?>>();
         for (Runnable command : commands) {
-            RunnableFuture<?> task = newTaskFor(command, null, batchRecord, idealFinishTime);
+            RunnableFuture<?> task = newTaskFor(command, null, batchRecord, null, idealFinishTime);
             super.execute(task);
             ret.add(task);
             idealFinishTime += increment;
@@ -481,7 +496,7 @@ public class BatchExecutor extends ThreadPoolExecutor {
         long idealFinishTime = batchRecord.nextElementStartTime.get();
         long increment = (batchRecord.finishTimeNanos - idealFinishTime) / batchRecord.nofElements;
         for (Runnable command : commands) {
-            RunnableFuture<?> task = newTaskFor(command, null, batchRecord, idealFinishTime);
+            RunnableFuture<?> task = newTaskFor(command, null, batchRecord, null, idealFinishTime);
             super.execute(task);
             idealFinishTime += increment;
         }
@@ -519,7 +534,7 @@ public class BatchExecutor extends ThreadPoolExecutor {
         long idealFinishTime = batchRecord.nextElementStartTime.get();
         long increment = (batchRecord.finishTimeNanos - idealFinishTime) / batchRecord.nofElements;
         for (Runnable command : commands) {
-            RunnableFuture<?> task = new RepeatingBatchReferringRunnable(command, batchRecord, idealFinishTime, repetitionRecord);
+            RunnableFuture<?> task = newTaskFor(command, null, batchRecord, repetitionRecord, idealFinishTime);
             super.execute(task);
             idealFinishTime += increment;
         }
@@ -539,7 +554,7 @@ public class BatchExecutor extends ThreadPoolExecutor {
         long idealFinishTime = batchRecord.nextElementStartTime.get();
         List<Future<T>> ret = new ArrayList<Future<T>>();
         for (Callable<T> command : commands) {
-            RunnableFuture<T> task = newTaskFor(command, batchRecord, idealFinishTime);
+            RunnableFuture<T> task = newTaskFor(command, batchRecord, null, idealFinishTime);
             super.execute(task);
             ret.add(task);
             idealFinishTime += increment;
@@ -548,24 +563,24 @@ public class BatchExecutor extends ThreadPoolExecutor {
         return ret;
     }
 
-    protected <T> RunnableFuture<T> newTaskFor(Callable<T> callable, BatchRecord batchRecord, long idealFinishTime) {
-        return new BatchReferringRunnable<T>(callable, batchRecord, idealFinishTime);
+    protected <T> BatchReferringRunnable<T> newTaskFor(Callable<T> callable, BatchRecord batchRecord, RepetitionRecord repetitionRecord, long idealFinishTime) {
+        return new BatchReferringRunnable<T>(callable, batchRecord, repetitionRecord, idealFinishTime);
     }
 
-    protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T result, BatchRecord batchRecord, long idealFinishTime) {
-        return new BatchReferringRunnable<T>(runnable, result, batchRecord, idealFinishTime);
+    protected <T> BatchReferringRunnable<T> newTaskFor(Runnable runnable, T result, BatchRecord batchRecord, RepetitionRecord repetitionRecord, long idealFinishTime) {
+        return new BatchReferringRunnable<T>(runnable, result, batchRecord, repetitionRecord, idealFinishTime);
     }
     
     //these two methods are implemented for the correct interoperability with #invokeAny and other not-overriden
     //methods.
     @Override
-    protected <T> RunnableFuture<T> newTaskFor(Callable<T> callable) {
-        return newTaskFor(callable, null, now());
+    protected <T> BatchReferringRunnable<T> newTaskFor(Callable<T> callable) {
+        return newTaskFor(callable, null, null, now());
     }
 
     @Override
-    protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
-        return newTaskFor(runnable, value, null, now());
+    protected <T> BatchReferringRunnable<T> newTaskFor(Runnable runnable, T value) {
+        return newTaskFor(runnable, value, null, null, now());
     };
     
     protected static long now() {

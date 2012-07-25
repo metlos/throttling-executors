@@ -50,9 +50,9 @@ public class Benchmark {
 
     private static abstract class TaskSubmitter<Executor extends ThreadPoolExecutor> {
         protected Executor executor;
-        
+
         abstract List<Future<Void>> submitTasks(ThreadFactory tf, Collection<? extends Callable<Void>> tasks);
-        
+
         void shutdown() {
             executor.shutdownNow();
         }
@@ -139,7 +139,7 @@ public class Benchmark {
             wrt.println(description);
             wrt.println();
             wrt.write("Raw timings of inidividual runs:\n");
-            
+
             double averageDuration = 0;
             double averageCpuUsage = 0;
             int num = 1;
@@ -151,39 +151,39 @@ public class Benchmark {
 
                 int cpuUsagePercent = (int) (cpuTime / 1e6 / duration * 100);
                 wrt.printf(formatString, num++, duration, cpuUsagePercent);
-                
+
                 averageDuration += duration;
                 averageCpuUsage += cpuUsagePercent;
             }
 
             averageDuration /= rawMillisecondTimesPerRun.size();
             averageCpuUsage /= rawMillisecondTimesPerRun.size();
-            
+
             double durationStdDev = 0;
             double cpuUsageStdDev = 0;
-            
-            for(int i = 0; i < rawMillisecondTimesPerRun.size(); ++i) {
+
+            for (int i = 0; i < rawMillisecondTimesPerRun.size(); ++i) {
                 long duration = rawMillisecondTimesPerRun.get(i);
                 long cpuTime = rawCpuNanoTimes.get(i);
                 int cpuUsagePercent = (int) (cpuTime / 1e6 / duration * 100);
-                
+
                 double durationDiff = duration - averageDuration;
                 double cpuUsageDiff = cpuUsagePercent - averageCpuUsage;
-                
+
                 durationStdDev += durationDiff * durationDiff;
                 cpuUsageStdDev += cpuUsageDiff * cpuUsageDiff;
             }
-            
+
             durationStdDev /= rawMillisecondTimesPerRun.size();
             durationStdDev = Math.sqrt(durationStdDev);
-            
+
             cpuUsageStdDev /= rawMillisecondTimesPerRun.size();
             cpuUsageStdDev = Math.sqrt(cpuUsageStdDev);
-            
+
             wrt.printf("Duration average and std deviation: %5.2fms, %5.2fms", averageDuration, durationStdDev);
             wrt.println();
             wrt.printf("Cpu Usage average and std deviation: %5.2f%%, %5.2f%%", averageCpuUsage, cpuUsageStdDev);
-            
+
             wrt.println();
             wrt.println();
 
@@ -225,7 +225,7 @@ public class Benchmark {
             }
 
             wrt.println();
-            
+
             wrt.println("CPU usage histogram:");
 
             maxValue = Long.MIN_VALUE;
@@ -256,7 +256,7 @@ public class Benchmark {
 
             return ret;
         }
-        
+
         private static int getNofDigits(long value) {
             if (value < 10) {
                 return 1;
@@ -280,11 +280,11 @@ public class Benchmark {
 
         private String getTestMethodName() {
             StackTraceElement[] sts = new Exception().getStackTrace();
-            
+
             return sts[2].getMethodName();
         }
-        
-        public TestResult run() throws InterruptedException, ExecutionException {            
+
+        public TestResult run() throws InterruptedException, ExecutionException {
             TestResult result = new TestResult();
             result.benchmarkName = getTestMethodName();
             result.rawMillisecondTimesPerRun = new ArrayList<Long>(runs);
@@ -317,7 +317,7 @@ public class Benchmark {
                 };
 
                 long start = System.currentTimeMillis();
-                
+
                 for (Future<?> f : taskSubmitter.submitTasks(tf, payloads)) {
                     f.get();
                 }
@@ -341,7 +341,7 @@ public class Benchmark {
                 result.rawMillisecondTimesPerRun.add(duration);
                 result.rawCpuNanoTimes.add(overallCpuTime);
 
-                taskSubmitter.shutdown();                
+                taskSubmitter.shutdown();
             }
 
             //create the timing histogram
@@ -370,7 +370,7 @@ public class Benchmark {
             }
 
             //create the Cpu usage histogram
-            for (int i = 0; i < 100; i += 10) {
+            for (int i = 0; i < 100 * Runtime.getRuntime().availableProcessors(); i += 10) {
                 result.cpuUsageHistogram.put(new Range(i, i + 10), 0);
             }
 
@@ -395,18 +395,18 @@ public class Benchmark {
 
     private static class TimedPayloadFactory implements PayloadFactory {
         private long durationMillis;
-        
+
         public TimedPayloadFactory(long durationMillis) {
             this.durationMillis = durationMillis;
         }
-        
+
         @Override
         public Callable<Void> createPayload() {
             return new Callable<Void>() {
                 @Override
                 public Void call() throws Exception {
                     long endTime = System.currentTimeMillis() + durationMillis;
-                    while(System.currentTimeMillis() < endTime) {
+                    while (System.currentTimeMillis() < endTime) {
                         UUID.randomUUID();
                     }
                     return null;
@@ -414,12 +414,12 @@ public class Benchmark {
             };
         }
     }
-    
+
     private static class StochasticTimedPayloadFactory implements PayloadFactory {
         private long minDurationMillis;
         private long maxDurationMillis;
         private Random rnd;
-        
+
         public StochasticTimedPayloadFactory(long minDurationMillis, long maxDurationMillis) {
             this.minDurationMillis = minDurationMillis;
             this.maxDurationMillis = maxDurationMillis;
@@ -429,14 +429,14 @@ public class Benchmark {
         private long getRandomDuration() {
             return minDurationMillis + (rnd.nextLong() % (maxDurationMillis - minDurationMillis));
         }
-        
+
         @Override
         public Callable<Void> createPayload() {
             return new Callable<Void>() {
                 @Override
                 public Void call() throws Exception {
                     long endTime = System.currentTimeMillis() + getRandomDuration();
-                    while(System.currentTimeMillis() < endTime) {
+                    while (System.currentTimeMillis() < endTime) {
                         UUID.randomUUID();
                     }
                     return null;
@@ -444,18 +444,20 @@ public class Benchmark {
             };
         }
     }
-    
-    private static final int RUNS_PER_BENCHMARK = 10;
-    private static final int TASKS_PER_RUN = 10;
-    private static final int NOF_THREADS = 1;
-    
+
+    private static final int RUNS_PER_BENCHMARK = Integer.parseInt(System.getProperty("runs-per-benchmark", "10"));
+    private static final int TASKS_PER_RUN = Integer.parseInt(System.getProperty("tasks-per-run", "20"));
+    private static final int NOF_THREADS = Integer.parseInt(System.getProperty("nof-threads", "1"));
+
     @Test
     public void benchmarkBatchExectuor_wideSpreadOfTasks_uniformTaskDuration() throws Exception {
         TestSetup<BatchExecutor> setup = new TestSetup<BatchExecutor>() {
             {
                 description =
                     "Benchmark of BatchExecutor where a low number of tasks is to be executed over a long period of time, giving each task more than enough time to finish."
-                        + " A task takes 50ms and a 100 of tasks is to be executed in the interval of 10s (giving 3 times more time than the task duration sum).";
+                        + " A task takes 50ms and a "
+                        + TASKS_PER_RUN
+                        + " of tasks is to be executed in the interval of 10s (giving 3 times more time than the task duration sum).";
                 payloadFactory = new TimedPayloadFactory(50);
 
                 runs = RUNS_PER_BENCHMARK;
@@ -476,14 +478,16 @@ public class Benchmark {
 
         System.out.println(result);
     }
-    
+
     @Test
     public void benchmarkBatchExectuor_wideSpreadOfTasks_variedTaskDuration() throws Exception {
         TestSetup<BatchExecutor> setup = new TestSetup<BatchExecutor>() {
             {
                 description =
                     "Benchmark of BatchExecutor where a low number of tasks is to be executed over a long period of time, giving each task more than enough time to finish."
-                        + " A task takes 50-100ms and a 100 of tasks is to be executed in the interval of 20s (giving 2-4 times more time than the task duration sum).";
+                        + " A task takes 50-100ms and a "
+                        + TASKS_PER_RUN
+                        + " of tasks is to be executed in the interval of 20s (giving 2-4 times more time than the task duration sum).";
                 payloadFactory = new StochasticTimedPayloadFactory(50, 100);
 
                 runs = RUNS_PER_BENCHMARK;
@@ -505,33 +509,35 @@ public class Benchmark {
         System.out.println(result);
     }
 
-  @Test
-  public void benchmarkBatchExectuor_wideSpreadOfTasks_wildlyVariedTaskDuration() throws Exception {
-      TestSetup<BatchExecutor> setup = new TestSetup<BatchExecutor>() {
-          {
-              description =
-                  "Benchmark of BatchExecutor where a low number of tasks is to be executed over a long period of time, giving each task more than enough time to finish."
-                      + " A task takes 50-500ms and a 100 of tasks is to be executed in the interval of 30s (giving .8-6 times more time than the task duration sum).";
-              payloadFactory = new StochasticTimedPayloadFactory(50, 500);
+    @Test
+    public void benchmarkBatchExectuor_wideSpreadOfTasks_wildlyVariedTaskDuration() throws Exception {
+        TestSetup<BatchExecutor> setup = new TestSetup<BatchExecutor>() {
+            {
+                description =
+                    "Benchmark of BatchExecutor where a low number of tasks is to be executed over a long period of time, giving each task more than enough time to finish."
+                        + " A task takes 50-500ms and a "
+                        + TASKS_PER_RUN
+                        + " of tasks is to be executed in the interval of 30s (giving .8-6 times more time than the task duration sum).";
+                payloadFactory = new StochasticTimedPayloadFactory(50, 500);
 
-              runs = RUNS_PER_BENCHMARK;
+                runs = RUNS_PER_BENCHMARK;
 
-              tasksPerRun = TASKS_PER_RUN;
+                tasksPerRun = TASKS_PER_RUN;
 
-              taskSubmitter = new TaskSubmitter<BatchExecutor>() {
-                  @Override
-                  public List<Future<Void>> submitTasks(ThreadFactory f, Collection<? extends Callable<Void>> tasks) {
-                      executor = new BatchExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS, f);
-                      return executor.invokeAllWithin(tasks, 30, TimeUnit.SECONDS);
-                  }
-              };
-          }
-      };
+                taskSubmitter = new TaskSubmitter<BatchExecutor>() {
+                    @Override
+                    public List<Future<Void>> submitTasks(ThreadFactory f, Collection<? extends Callable<Void>> tasks) {
+                        executor = new BatchExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS, f);
+                        return executor.invokeAllWithin(tasks, 30, TimeUnit.SECONDS);
+                    }
+                };
+            }
+        };
 
-      TestResult result = setup.run();
+        TestResult result = setup.run();
 
-      System.out.println(result);
-  }
+        System.out.println(result);
+    }
 
     @Test
     public void benchmarkBatchExectuor_tightSpreadOfTasks_uniformTaskDuration() throws Exception {
@@ -539,7 +545,9 @@ public class Benchmark {
             {
                 description =
                     "Benchmark of BatchExecutor where a high number of tasks is to be executed over a short period of time, giving each task just enough time to finish."
-                        + " A task takes 50ms and a 100 of tasks is to be executed in the interval of 5s.";
+                        + " A task takes 50ms and a "
+                        + TASKS_PER_RUN
+                        + " of tasks is to be executed in the interval of 5s.";
                 payloadFactory = new TimedPayloadFactory(50);
 
                 runs = RUNS_PER_BENCHMARK;
@@ -567,7 +575,9 @@ public class Benchmark {
             {
                 description =
                     "Benchmark of BatchExecutor where a high number of tasks is to be executed over a short period of time, giving each task just enough time to finish."
-                    + " A task takes 40-60ms and a 100 of tasks is to be executed in the interval of 5s.";
+                        + " A task takes 40-60ms and a "
+                        + TASKS_PER_RUN
+                        + " of tasks is to be executed in the interval of 5s.";
                 payloadFactory = new StochasticTimedPayloadFactory(40, 60);
 
                 runs = RUNS_PER_BENCHMARK;
@@ -588,14 +598,16 @@ public class Benchmark {
 
         System.out.println(result);
     }
-    
+
     @Test
     public void benchmarkBatchExectuor_wideSpreadOfTasks_uniformTaskDuration_lowCpuUsage() throws Exception {
         TestSetup<BatchCpuThrottlingExecutor> setup = new TestSetup<BatchCpuThrottlingExecutor>() {
             {
                 description =
                     "CPU is capped at 30%. Benchmark of BatchExecutor where a low number of tasks is to be executed over a long period of time, giving each task more than enough time to finish."
-                        + " A task takes 50ms and a 100 of tasks is to be executed in the interval of 10s (giving 3 times more time than the task duration sum).";
+                        + " A task takes 50ms and a "
+                        + TASKS_PER_RUN
+                        + " of tasks is to be executed in the interval of 10s (giving 3 times more time than the task duration sum).";
                 payloadFactory = new TimedPayloadFactory(50);
 
                 runs = RUNS_PER_BENCHMARK;
@@ -616,14 +628,15 @@ public class Benchmark {
 
         System.out.println(result);
     }
-    
+
     @Test
     public void benchmarkThreadPoolExecutor_uniformTaskDuration() throws Exception {
         TestSetup<ThreadPoolExecutor> setup = new TestSetup<ThreadPoolExecutor>() {
             {
                 description =
                     "This benchmark uses the Java's ThreadPoolExecutor to establish the baseline we can compare against"
-                        + " when determining the overhead the batching and cpu throttling presents. Tasks take 50ms and there is 100 of them per run.";
+                        + " when determining the overhead the batching and cpu throttling presents. Tasks take 50ms and there is "
+                        + TASKS_PER_RUN + " of them per run.";
                 payloadFactory = new TimedPayloadFactory(50);
 
                 runs = RUNS_PER_BENCHMARK;
@@ -633,12 +646,14 @@ public class Benchmark {
                 taskSubmitter = new TaskSubmitter<ThreadPoolExecutor>() {
                     @Override
                     public List<Future<Void>> submitTasks(ThreadFactory f, Collection<? extends Callable<Void>> tasks) {
-                        executor = new ThreadPoolExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS, new LinkedBlockingQueue<Runnable>(), f);
-                        ArrayList<Future<Void>> ret = new ArrayList<Future<Void>>(); 
-                        for(Callable<Void> task : tasks) {
+                        executor =
+                            new ThreadPoolExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS,
+                                new LinkedBlockingQueue<Runnable>(), f);
+                        ArrayList<Future<Void>> ret = new ArrayList<Future<Void>>();
+                        for (Callable<Void> task : tasks) {
                             ret.add(executor.submit(task));
                         }
-                        
+
                         return ret;
                     }
                 };
@@ -649,13 +664,15 @@ public class Benchmark {
 
         System.out.println(result);
     }
-    
+
     @Test
     public void benchmarkBatchExecutor_uniformTaskDuration_noWait() throws Exception {
         TestSetup<BatchExecutor> setup = new TestSetup<BatchExecutor>() {
             {
                 description =
-                    "This benchmark runs 100 tasks, each taking 50ms, per run. It sets the duration to 0s to run them as quickly as possible."
+                    "This benchmark runs "
+                        + TASKS_PER_RUN
+                        + " tasks, each taking 50ms, per run. It sets the duration to 0s to run them as quickly as possible."
                         + " This is going to give us an idea about the overhead the duration tracking imposes.";
                 payloadFactory = new TimedPayloadFactory(50);
 
@@ -666,9 +683,9 @@ public class Benchmark {
                 taskSubmitter = new TaskSubmitter<BatchExecutor>() {
                     @Override
                     public List<Future<Void>> submitTasks(ThreadFactory f, Collection<? extends Callable<Void>> tasks) {
-                      executor = new BatchExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS, f);
-                      List<Future<Void>> ret =  executor.invokeAllWithin(tasks, 0, TimeUnit.SECONDS);
-                      return ret;
+                        executor = new BatchExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS, f);
+                        List<Future<Void>> ret = executor.invokeAllWithin(tasks, 0, TimeUnit.SECONDS);
+                        return ret;
                     }
                 };
             }
@@ -678,13 +695,15 @@ public class Benchmark {
 
         System.out.println(result);
     }
-    
+
     @Test
     public void benchmarkBatchCpuThrottlingExecutor_uniformTaskDuration_noWait_noCpuCap() throws Exception {
         TestSetup<BatchCpuThrottlingExecutor> setup = new TestSetup<BatchCpuThrottlingExecutor>() {
             {
                 description =
-                    "This benchmark runs 100 tasks, each taking 50ms, per run. It sets the duration to 0s to run them as quickly as possible."
+                    "This benchmark runs "
+                        + TASKS_PER_RUN
+                        + " tasks, each taking 50ms, per run. It sets the duration to 0s to run them as quickly as possible."
                         + " This is going to give us an idea about the overhead the duration tracking imposes.";
                 payloadFactory = new TimedPayloadFactory(50);
 
@@ -695,10 +714,10 @@ public class Benchmark {
                 taskSubmitter = new TaskSubmitter<BatchCpuThrottlingExecutor>() {
                     @Override
                     public List<Future<Void>> submitTasks(ThreadFactory f, Collection<? extends Callable<Void>> tasks) {
-                      //1000 cores you say?
-                      executor = new BatchCpuThrottlingExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS, f, 1000);
-                      List<Future<Void>> ret = executor.invokeAllWithin(tasks, 0, TimeUnit.SECONDS);
-                      return ret;
+                        //1000 cores you say?
+                        executor = new BatchCpuThrottlingExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS, f, 1000);
+                        List<Future<Void>> ret = executor.invokeAllWithin(tasks, 0, TimeUnit.SECONDS);
+                        return ret;
                     }
                 };
             }
@@ -708,12 +727,72 @@ public class Benchmark {
 
         System.out.println(result);
     }
-    
-//    public static void main(String[] args) throws Exception {
-//        Benchmark me = new Benchmark();
-//        me.benchmarkBatchExectuor_wideSpreadOfTasks_uniformTaskDuration();
-//        me.benchmarkBatchExectuor_wideSpreadOfTasks_variedTaskDuration();
-//        me.benchmarkBatchExectuor_tightSpreadOfTasks_uniformTaskDuration();
-//        me.benchmarkBatchExectuor_tightSpreadOfTasks_variedTaskDuration();
-//    }
+
+    @Test
+    public void benchmarkBatchCpuThrottlingExecutor_uniformTaskDuration_noWait_cpuCap() throws Exception {
+        TestSetup<BatchCpuThrottlingExecutor> setup = new TestSetup<BatchCpuThrottlingExecutor>() {
+            {
+                description =
+                    "This benchmark runs "
+                        + TASKS_PER_RUN
+                        + " tasks, each taking 50ms, per run. It sets the duration to 0s to run them as quickly as possible."
+                        + " The CPU is capped at 5%. We should therefore see minimal variance in CPU usage.";
+                payloadFactory = new TimedPayloadFactory(50);
+
+                runs = RUNS_PER_BENCHMARK;
+
+                tasksPerRun = TASKS_PER_RUN;
+
+                taskSubmitter = new TaskSubmitter<BatchCpuThrottlingExecutor>() {
+                    @Override
+                    public List<Future<Void>> submitTasks(ThreadFactory f, Collection<? extends Callable<Void>> tasks) {
+                        //1000 cores you say?
+                        executor = new BatchCpuThrottlingExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS, f, .05f);
+                        List<Future<Void>> ret = executor.invokeAllWithin(tasks, 0, TimeUnit.SECONDS);
+                        return ret;
+                    }
+                };
+            }
+        };
+
+        TestResult result = setup.run();
+
+        System.out.println(result);
+    }
+
+    @Test
+    public void benchmarkBatchExectuor_tightSpreadOfTasks_variedTaskDuration_cpuCap() throws Exception {
+        TestSetup<BatchExecutor> setup = new TestSetup<BatchExecutor>() {
+            {
+                description =
+                    "Benchmark of BatchExecutor where a high number of tasks is to be executed over a short period of time, giving each task just enough time to finish."
+                        + " A task takes 40-60ms and a "
+                        + TASKS_PER_RUN
+                        + " of tasks is to be executed in the interval of 2s. The CPU is capped at 5%."
+                        + " We should therefore see a violation of the time constraints but CPU cap should be enforced.";
+                payloadFactory = new StochasticTimedPayloadFactory(40, 60);
+
+                runs = RUNS_PER_BENCHMARK;
+
+                tasksPerRun = TASKS_PER_RUN;
+
+                taskSubmitter = new TaskSubmitter<BatchExecutor>() {
+                    @Override
+                    public List<Future<Void>> submitTasks(ThreadFactory f, Collection<? extends Callable<Void>> tasks) {
+                        executor = new BatchCpuThrottlingExecutor(NOF_THREADS, NOF_THREADS, 0, TimeUnit.DAYS, f, .05f);
+                        return executor.invokeAllWithin(tasks, 2, TimeUnit.SECONDS);
+                    }
+                };
+            }
+        };
+
+        TestResult result = setup.run();
+
+        System.out.println(result);
+    }
+
+        public static void main(String[] args) throws Exception {
+            Benchmark me = new Benchmark();
+            me.benchmarkBatchExectuor_wideSpreadOfTasks_uniformTaskDuration_lowCpuUsage();
+        }
 }

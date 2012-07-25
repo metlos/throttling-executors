@@ -86,6 +86,8 @@ public class BatchCpuThrottlingExecutor extends BatchExecutor {
 
     @Override
     protected void beforeExecute(Thread t, Runnable r) {
+        currentlyExecutingTasks.incrementAndGet();
+        
         ThreadUsageRecord threadRecord = getThreadUsageRecord();
 
         if (threadRecord.startTime == 0) {
@@ -97,8 +99,6 @@ public class BatchCpuThrottlingExecutor extends BatchExecutor {
     
     @Override
     protected void afterExecute(Runnable r, Throwable t) {
-        currentlyExecutingTasks.decrementAndGet();
-        
         ThreadUsageRecord rec = getThreadUsageRecord();
 
         //compute the CPU usage for the execution that just happened
@@ -141,6 +141,8 @@ public class BatchCpuThrottlingExecutor extends BatchExecutor {
         
         //reset the time collection
         rec.startTime = 0;
+        
+        currentlyExecutingTasks.decrementAndGet();
         
         if (correction > 0) {
             LockSupport.parkNanos(correction);
